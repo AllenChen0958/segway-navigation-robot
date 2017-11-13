@@ -1,6 +1,7 @@
 import scipy.io as sio
 import sys
-mat = sio.loadmat(sys.argv[1])
+# mat = sio.loadmat(sys.argv[1])
+mat = sio.loadmat('color150_2.mat')
 mat = mat['colors']
 # for i in range (len(mat)):
 #    print("{}: {}".format(i, mat[i]))
@@ -75,8 +76,10 @@ for i in range(len(mat)):
     elif i==1:
         mat[i] = [255, 0, 0]
     elif i==6:
-        mat[i] = [255, 0, 255]
         #mat[i] = [255, 0, 0]
+        mat[i] = [255, 0, 255]
+    elif i==13:
+        mat[i] = [255, 255, 0]
     else:
         mat[i] = [0, 0, 255]
 sio.savemat('color150_2.mat', {'colors':mat})

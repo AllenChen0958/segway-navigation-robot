@@ -16,7 +16,7 @@ from model import DeepLabResNetModel
 
 os.environ['CUDA_VISIBLE_DEVICES']='0'
 
-from robot_project import predictor
+from robot_project import predictor_resnet as predictor
 from ros_wrapper import RosImageSubscriber, RosKobukiMotionPublisher, RosRMPMotionPublisher
 import rospy
 
@@ -45,7 +45,6 @@ FLAGS = flags.FLAGS
 MAX_QUEUE_SIZE = FLAGS.qsize
 image_queue = deque(maxlen=MAX_QUEUE_SIZE)
 print('Image queue size = %d' % MAX_QUEUE_SIZE)
-print('Use seg {}'.format(FLAGS.use_seg))
 
 def read_labelcolours(matfn):
     mat = sio.loadmat(matfn)
@@ -62,25 +61,6 @@ def main(argv=None):
     # Input placeholder
     input_img = tf.placeholder(tf.float32, [1, FLAGS.height, FLAGS.width, 3])
 
-    # Create network.
-    net = DeepLabResNetModel({'data': input_img}, is_training=False, num_classes=NUM_CLASSES)
-
-    # Which variables to load.
-    restore_var = tf.global_variables()
-
-    # Predictions.
-    raw_output = net.layers['fc_out']
-    raw_output_up = tf.image.resize_bilinear(raw_output, tf.shape(input_img)[1:3,])
-    raw_output_up = tf.argmax(raw_output_up, dimension=3)
-
-    # Color transform
-    color_mat = label_colours[..., [2,1,0]]
-    color_mat = tf.constant(color_mat, dtype=tf.float32)
-    onehot_output = tf.one_hot(raw_output_up, depth=len(label_colours))
-    onehot_output = tf.reshape(onehot_output, (-1, len(label_colours)))
-    pred = tf.matmul(onehot_output, color_mat)
-    pred = tf.reshape(pred, (1, FLAGS.height, FLAGS.width, 3))
- 
     # Set up TF session and initialize variables.
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
@@ -89,19 +69,9 @@ def main(argv=None):
 
     sess.run(init)
 
-    # Load weights.
-    ckpt = tf.train.get_checkpoint_state(RESTORE_PATH)
-    if ckpt and ckpt.model_checkpoint_path:
-        loader = tf.train.Saver(var_list=restore_var)
-        load_step = int(os.path.basename(ckpt.model_checkpoint_path).split('-')[1])
-        load(loader, sess, ckpt.model_checkpoint_path)
-    else:
-        print('No checkpoint file found.')
-        load_step = 0
-
-    #p = predictor.getSingleFramePredictor(load_path=FLAGS.path, transform=False)
     p = predictor.getPredictor(load_path=FLAGS.path, transform=False)
     scale = 1.0
+    #ros_rmp_motion_publisher = RosKobukiMotionPublisher()
     ros_rmp_motion_publisher = RosKobukiMotionPublisher(linear=FLAGS.lin, angular=FLAGS.ang)
     #ros_rmp_motion_publisher = RosRMPMotionPublisher(linear=FLAGS.lin, angular=FLAGS.ang)
     
@@ -116,26 +86,17 @@ def main(argv=None):
             start = time.time()
             img = image_queue[0]
             raw_img = img
-            #raw_img = cv2.resize(img, (FLAGS.width, FLAGS.height)).astype(float)
-            img = raw_img - IMG_MEAN
-            img = np.expand_dims(img, axis=0)
-            preds = sess.run(pred, feed_dict={input_img: img})    
-            if FLAGS.use_seg:
-                s = preds[0].astype(np.uint8)
-                s = cv2.resize(s, (84, 84))
-            else:
-                s = raw_img
-                s = cv2.resize(s, (84, 84))
-            s = cv2.cvtColor(s, cv2.COLOR_BGR2RGB)
-           
+            
+            img = cv2.resize(img, (224, 224))
+            s = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             act = p(s)
             ros_rmp_motion_publisher.publish(act)
             end = time.time()
             print('Inference time = %f' % (end - start))
             
-            if timestep < 100:
-                cv2.imwrite('imgs/raw_img_%05d_%d.png' % (timestep, act), raw_img)
-                cv2.imwrite('imgs/msk_img_%05d_%d.png' % (timestep, act), s)
+            if timestep < 5:
+                cv2.imwrite('raw_img_%05d_%d.png' % (timestep, act), raw_img)
+                cv2.imwrite('msk_img_%05d_%d.png' % (timestep, act), s)
             timestep += 1
             print("STEP: {}".format(timestep))
             

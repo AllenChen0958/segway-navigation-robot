@@ -1,7 +1,7 @@
 import rospy
 import cv2
 from std_msgs.msg import String
-from geometry_msgs.msg import TwistStamped
+from geometry_msgs.msg import TwistStamped, Twist
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 
@@ -45,7 +45,7 @@ class RosRMPMotionPublisher(object):
     TURN_L = 2
     STOP_ACTION = 3
 
-    def __init__(self, topic='/rmp220/base/vel_cmd', linear=0.2, angular=0.17):
+    def __init__(self, topic='/rmp220/base/vel_cmd', linear=0.25, angular=0.15):
         self.pub = rospy.Publisher(topic, TwistStamped, queue_size=1)
         self.linear = linear
         self.angular = angular
@@ -65,3 +65,43 @@ class RosRMPMotionPublisher(object):
             vel.twist.linear.x  = self.linear
             vel.twist.angular.z = 0.0
         self.pub.publish(vel)
+
+class RosKobukiMotionPublisher(object):
+    
+    FORWARD = 0
+    TURN_R = 1
+    TURN_L = 2
+    STOP_ACTION = 3
+
+    def __init__(self, topic='/mobile_base/commands/velocity', linear=0.3, angular=0.3):
+        self.pub = rospy.Publisher(topic, Twist, queue_size=5)
+        rospy.set_param('/mobile_base/cmd_vel_timeout', '0.7')
+        self.linear = linear
+        self.angular = angular
+
+    def publish(self, cmd):
+        vel = Twist()
+        if cmd == self.STOP_ACTION:
+            vel.linear.x  = 0.0
+            vel.angular.z = 0.0
+        elif cmd == self.TURN_R:
+            vel.linear.x  = self.linear * 0.5
+            vel.angular.z = -self.angular
+        elif cmd == self.TURN_L:
+            vel.linear.x  = self.linear * 0.5
+            vel.angular.z = self.angular * 0.5
+        else:
+            vel.linear.x  = self.linear
+            vel.angular.z = 0.0
+        self.pub.publish(vel)
+
+if __name__ == '__main__':
+    import rospy
+    p = RosRMPMotionPublisher()
+    try:
+        rospy.init_node('agent', anonymous=True)
+        while True:
+            p.publish(0)
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
