@@ -77,7 +77,7 @@ for i in range(len(mat)):
         mat[i] = [255, 0, 0]
     elif i==6:
         #mat[i] = [255, 0, 0]
-        mat[i] = [255, 0, 255]
+        mat[i] = [0, 0, 255]
     elif i==13:
         mat[i] = [255, 255, 0]
     else:

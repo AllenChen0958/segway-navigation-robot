@@ -77,6 +77,8 @@ for i in range(len(mat)):
     elif i==6:
         mat[i] = [255, 0, 255]
         #mat[i] = [255, 0, 0]
+    elif i==24 or i==20:
+        mat[i]= [0,0,0]
     else:
         mat[i] = [0, 0, 255]
 sio.savemat('color150_2.mat', {'colors':mat})

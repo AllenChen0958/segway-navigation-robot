@@ -1,5 +1,6 @@
 import rospy
 import cv2
+import numpy as np
 from std_msgs.msg import String
 from geometry_msgs.msg import TwistStamped, Twist
 from sensor_msgs.msg import Image
@@ -19,6 +20,76 @@ class RosImageSubscriber(object):
     def callback(self,data):
         try:
             cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+            self.user_callback(cv_image)
+        except CvBridgeError as e:
+            print(e)
+
+class RosRealsenseDepthImageSubscriber:
+
+    def __init__(self, user_callback):
+        self.bridge = CvBridge()
+        self.image_sub = rospy.Subscriber("/camera/depth/image_raw", Image, self.callback)
+        self.user_callback = user_callback
+
+    def callback(self, data):
+        try:
+            cv_image = self.bridge.imgmsg_to_cv2(data, "32FC1")
+            cv2.normalize(cv_image, cv_image, 0, 1, cv2.NORM_MINMAX)
+            cv_image = 1.0 - cv_image
+            cv_image *= 255.0
+            cv_image = np.expand_dims(cv_image, axis=-1)
+            self.user_callback(cv_image)
+        except CvBridgeError as e:
+            print(e)
+
+class RosDepthImageSubscriber:
+
+    def __init__(self, user_callback):
+        self.bridge = CvBridge()
+        self.image_sub = rospy.Subscriber("/zed/depth/depth_registered", Image, self.callback)
+        self.user_callback = user_callback
+
+    def callback(self, data):
+        try:
+            cv_image = self.bridge.imgmsg_to_cv2(data, "16UC1")
+            min_val = 0
+            max_val = 125
+            min_val, max_val, min_loc, max_loc=cv2.minMaxLoc(cv_image)
+            if min_val == max_val :
+                min_val =0
+                max_val=2
+            min_val = float(min_val)
+            max_val = float(max_val)
+            tmp = cv_image
+            tmp = tmp.astype(np.float32)
+            #tmp = tmp * (255.0 / (max_val - min_val))
+            tmp = cv2.convertScaleAbs(tmp, tmp, 255.0 / (max_val - min_val))
+            tmp = tmp.astype(np.uint8)
+            #cv2.convertTo(img_scaled_8u, CV_8UC1, 255. / (max_val - min_val))
+            #cv_image = cv2.cvtColor(tmp, cv2.COLOR_GRAY2RGB)
+            #cv2.normalize(cv_image, cv_image, 0, 10000, cv2.NORM_MINMAX)
+            tmp = np.expand_dims(tmp, axis=-1)
+            self.user_callback(tmp)
+        except CvBridgeError as e:
+            print(e)
+
+
+    def callback(self, data):
+        try:
+            cv_image = self.bridge.imgmsg_to_cv2(data, "16UC1")
+            min_val = 0
+            max_val = 10
+            min_val, max_val, min_loc, max_loc=cv2.minMaxLoc(cv_image)
+            if min_val == max_val :
+                min_val = 0
+                max_val = 2
+            min_val = float(min_val)
+            max_val = float(max_val)
+            tmp = cv_image
+            tmp = tmp.astype(np.float32)
+            tmp = cv2.convertScaleAbs(tmp, tmp, 255.0 / (max_val - min_val))
+            tmp = tmp.astype(np.uint8)
+            cv_image = np.expand_dims(tmp, axis=-1)                
             self.user_callback(cv_image)
         except CvBridgeError as e:
             print(e)
@@ -45,7 +116,7 @@ class RosRMPMotionPublisher(object):
     TURN_L = 2
     STOP_ACTION = 3
 
-    def __init__(self, topic='/rmp220/base/vel_cmd', linear=0.25, angular=0.15):
+    def __init__(self, topic='/rmp220/base/vel_cmd', linear=0.4, angular=0.38):
         self.pub = rospy.Publisher(topic, TwistStamped, queue_size=1)
         self.linear = linear
         self.angular = angular

@@ -67,50 +67,53 @@ def load(saver, sess, ckpt_path):
 
 def main(argv=None):
     # Input placeholder
-    input_img = tf.placeholder(tf.float32, [1, FLAGS.height, FLAGS.width, 3])
+    #input_img = tf.placeholder(tf.float32, [1, FLAGS.height, FLAGS.width, 3])
 
     # Create network.
-    net = DeepLabResNetModel({'data': input_img}, is_training=False, num_classes=NUM_CLASSES)
+    #net = DeepLabResNetModel({'data': input_img}, is_training=False, num_classes=NUM_CLASSES)
 
     # Which variables to load.
-    restore_var = tf.global_variables()
+    #restore_var = tf.global_variables()
 
     # Predictions.
-    raw_output = net.layers['fc_out']
-    raw_output_up = tf.image.resize_bilinear(raw_output, tf.shape(input_img)[1:3,])
-    raw_output_up = tf.argmax(raw_output_up, dimension=3)
+    #raw_output = net.layers['fc_out']
+    #raw_output_up = tf.image.resize_bilinear(raw_output, tf.shape(input_img)[1:3,])
+    #raw_output_up = tf.argmax(raw_output_up, dimension=3)
 
     # Color transform
-    color_mat = label_colours[..., [2,1,0]]
-    color_mat = tf.constant(color_mat, dtype=tf.float32)
-    onehot_output = tf.one_hot(raw_output_up, depth=len(label_colours))
-    onehot_output = tf.reshape(onehot_output, (-1, len(label_colours)))
-    pred = tf.matmul(onehot_output, color_mat)
-    pred = tf.reshape(pred, (1, FLAGS.height, FLAGS.width, 3))
+    #color_mat = label_colours[..., [2,1,0]]
+    #color_mat = tf.constant(color_mat, dtype=tf.float32)
+    #onehot_output = tf.one_hot(raw_output_up, depth=len(label_colours))
+    #onehot_output = tf.reshape(onehot_output, (-1, len(label_colours)))
+    #pred = tf.matmul(onehot_output, color_mat)
+    #pred = tf.reshape(pred, (1, FLAGS.height, FLAGS.width, 3))
  
     # Set up TF session and initialize variables.
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     sess = tf.Session(config=config)
+
+    graph2, pspnet_predict = get_segmentation_predictor(sess)
+
     init = tf.global_variables_initializer()
 
     sess.run(init)
 
     # Load weights.
-    ckpt = tf.train.get_checkpoint_state(RESTORE_PATH)
-    if ckpt and ckpt.model_checkpoint_path:
-        loader = tf.train.Saver(var_list=restore_var)
-        load_step = int(os.path.basename(ckpt.model_checkpoint_path).split('-')[1])
-        load(loader, sess, ckpt.model_checkpoint_path)
-    else:
-        print('No checkpoint file found.')
-        load_step = 0
+    #ckpt = tf.train.get_checkpoint_state(RESTORE_PATH)
+    #if ckpt and ckpt.model_checkpoint_path:
+    #    loader = tf.train.Saver(var_list=restore_var)
+    #    load_step = int(os.path.basename(ckpt.model_checkpoint_path).split('-')[1])
+    #    load(loader, sess, ckpt.model_checkpoint_path)
+    #else:
+    #    print('No checkpoint file found.')
+    #    load_step = 0
 
     #p = predictor.getSingleFramePredictor(load_path=FLAGS.path, transform=False)
     p = predictor.getPredictor(load_path=FLAGS.path, transform=False)
     scale = 1.0
-    ros_rmp_motion_publisher = RosKobukiMotionPublisher(linear=FLAGS.lin, angular=FLAGS.ang)
-    #ros_rmp_motion_publisher = RosRMPMotionPublisher(linear=FLAGS.lin, angular=FLAGS.ang)
+    #ros_rmp_motion_publisher = RosKobukiMotionPublisher(linear=FLAGS.lin, angular=FLAGS.ang)
+    ros_rmp_motion_publisher = RosRMPMotionPublisher(linear=FLAGS.lin, angular=FLAGS.ang)
     
     def actor(stop_event):
         global image_queue
@@ -122,19 +125,22 @@ def main(argv=None):
         while not stop_event.is_set():
             start = time.time()
             img = image_queue[0]
-            raw_img = img
-            #raw_img = cv2.resize(img, (FLAGS.width, FLAGS.height)).astype(float)
+
+            
+            raw_img = img.astype(float)
             img = raw_img - IMG_MEAN
-            img = np.expand_dims(img, axis=0)
-            if not FLAGS.use_depth:
-                preds = sess.run(pred, feed_dict={input_img: img})    
+            
+            with graph2.as_default():
+                if not FLAGS.use_depth:
+                    #preds = sess.run(pred, feed_dict={input_img: img})
+                    preds = pspnet_predict(img)
+                    cv2.imwrite('image.png', preds)
+
             if FLAGS.use_seg:
-                s = preds[0].astype(np.uint8)
-                msk_img = s
+                s = preds.astype(np.uint8)
                 s = cv2.resize(s, (84, 84))
             else:
                 s = raw_img
-                msk_img = s
                 s = cv2.resize(s, (84, 84))
             if FLAGS.use_depth:
                 s = np.expand_dims(s, axis=-1)
@@ -146,11 +152,10 @@ def main(argv=None):
             end = time.time()
             print('Inference time = %f' % (end - start))
             
-            if timestep < 3000:
-                #raw_img_resize = cv2.resize(raw_img, (84, 84))
-                s = cv2.cvtColor(s, cv2.COLOR_RGB2BGR)
-                cv2.imwrite('imgs/raw_img_%05d.png' % (timestep), raw_img)
-                cv2.imwrite('imgs/msk_img_%05d.png' % (timestep), msk_img)
+            if timestep < 1000:
+                raw_img_resize = cv2.resize(raw_img, (84, 84))
+                cv2.imwrite('imgs/raw_img_%05d_%d.png' % (timestep, act), raw_img_resize)
+                cv2.imwrite('imgs/msk_img_%05d_%d.png' % (timestep, act), s)
             timestep += 1
             print("STEP: {}".format(timestep))
             
